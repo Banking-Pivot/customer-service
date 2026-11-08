@@ -1,0 +1,458 @@
+openapi: 3.0.3
+info:
+  title: Customer API
+  version: 1.0.0
+  description: |
+    API for registering, retrieving, updating and deactivating bank customers.
+    Customer type and identity document are immutable in this API version.
+    PERSONAL customers support STANDARD and VIP profiles.
+    BUSINESS customers support STANDARD and SME profiles.
+servers:
+  - url: /
+tags:
+  -
+  - name: Customers
+    description: Customer records and profiles.
+paths:
+  /customers:
+    post:
+      tags: [Customers]
+      operationId: createCustomer
+      summary: Register a customer
+      description: |
+        Creates an ACTIVE customer with a server-generated UUID and timestamps.
+        Identity document uniqueness applies to active and inactive customers.
+        Document types and numbers are normalized by removing surrounding
+        whitespace and converting letters to uppercase independently of locale.
+        Internal characters and leading zeros are preserved.
+        Surrounding whitespace is removed from the customer name.
+        A repeated POST with the same identity document returns 409;
+        replay of the original successful response is not promised.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+            example:
+              type: PERSONAL
+              profile: STANDARD
+              documentType: DNI
+              documentNumber: '12345678'
+              name: Ana Perez
+      responses:
+        '201':
+          description: Customer created.
+          headers:
+            Location:
+              description: URI of the created customer.
+              schema:
+                type: string
+              example: /customers/6bd651ef-1a2c-4e9a-b6cd-17d569fa8f44
+            ETag:
+              $ref: '#/components/headers/CustomerETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/BusinessRuleViolation'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Customers]
+      operationId: listCustomers
+      summary: List customers using bounded pagination
+      description: |
+        Includes ACTIVE and INACTIVE customers unless filtered by status.
+        Orders by customer UUID ascending for deterministic ordering.
+        Pages are not snapshots: concurrent modifications can change page contents
+        and the total count between requests. Out-of-range pages return empty items.
+      parameters:
+        - name: page
+          in: query
+          description: Zero-based page number.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 10000
+            default: 0
+        - name: size
+          in: query
+          description: Maximum number of customers per page.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/CustomerType'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CustomerStatus'
+      responses:
+        '200':
+          description: Customer page. Concurrent changes may cause differences between items and the total count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerPageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /customers/{customerId}:
+    parameters:
+      - $ref: '#/components/parameters/CustomerId'
+    get:
+      tags: [Customers]
+      operationId: getCustomer
+      summary: Find a customer by ID
+      description: Returns ACTIVE or INACTIVE customers.
+      responses:
+        '200':
+          description: Customer found.
+          headers:
+            ETag:
+              $ref: '#/components/headers/CustomerETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Customers]
+      operationId: updateCustomer
+      summary: Replace the editable customer information
+      description: |
+        Replaces both editable fields, name and profile. Both are required.
+        Type, identity document, status, ID and createdAt cannot be set here.
+        Rejects updates to INACTIVE customers with 409.
+        The caller must supply the strong ETag obtained from a previous response.
+        The update succeeds only if the supplied ETag matches the current revision.
+        A stale revision returns 412.
+        With a matching ETag and unchanged editable values, the current
+        representation and ETag are returned.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+            example:
+              name: Ana Perez Gomez
+              profile: VIP
+      responses:
+        '200':
+          description: Customer updated, or already has the requested values.
+          headers:
+            ETag:
+              $ref: '#/components/headers/CustomerETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/BusinessRuleViolation'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Customers]
+      operationId: deactivateCustomer
+      summary: Deactivate a customer without erasing the record
+      description: |
+        Changes ACTIVE to INACTIVE and preserves the customer record.
+        The identity document remains associated with the customer and cannot
+        be used to register another customer. Account and credit product statuses are unchanged.
+        Deactivation requires If-Match to match the current customer revision.
+        An INACTIVE customer with a matching revision returns 204 without changes.
+        A stale revision returns 412, including a repeated request with the old ETag.
+        A missing customer returns 404. GET remains available after deactivation.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Customer inactive. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      description: Server-generated customer UUID.
+      schema:
+        type: string
+        format: uuid
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: |
+        Exactly one quoted numeric strong ETag, for example "3".
+        Wildcards, weak ETags and lists are not accepted by this API.
+        Missing header yields 428; malformed header yields 400;
+        a nonmatching revision yields 412.
+      schema:
+        type: string
+        pattern: '^"[0-9]+"$'
+        maxLength: 21
+      example: '"3"'
+  headers:
+    CustomerETag:
+      description: |
+        Strong entity tag identifying the customer revision as a quoted number.
+        The tag changes whenever the returned customer representation changes.
+        Send it in If-Match when updating or deactivating the customer.
+      schema:
+        type: string
+        pattern: '^"[0-9]+"$'
+      example: '"3"'
+  responses:
+    BadRequest:
+      description: Malformed JSON, invalid UUID, invalid field or parameter, or malformed If-Match.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Customer does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Identity document already exists (POST), or customer is inactive (PUT).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the current revision. Read the customer again.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnsupportedMediaType:
+      description: Request body must use application/json.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BusinessRuleViolation:
+      description: Well-formed fields violate business rules, such as an incompatible type and profile.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionRequired:
+      description: If-Match header is required.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: An unexpected error prevented completion of the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    CreateCustomerRequest:
+      title: CreateCustomerRequest
+      type: object
+      additionalProperties: false
+      required: [type, profile, documentType, documentNumber, name]
+      properties:
+        type:
+          $ref: '#/components/schemas/CustomerType'
+        profile:
+          $ref: '#/components/schemas/CustomerProfile'
+        documentType:
+          type: string
+          minLength: 1
+          maxLength: 24
+          pattern: '^.*\S.*$'
+          description: Identity document type code. Surrounding whitespace is removed and letters are converted to uppercase.
+          example: DNI
+        documentNumber:
+          type: string
+          minLength: 1
+          maxLength: 32
+          pattern: '^.*\S.*$'
+          description: Identity document number. Surrounding whitespace is removed and letters are converted to uppercase. Leading zeros and internal characters are preserved.
+          example: '12345678'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: '^.*\S.*$'
+          description: Full name or registered business name. Surrounding whitespace is removed.
+          example: Ana Perez
+    UpdateCustomerRequest:
+      title: UpdateCustomerRequest
+      type: object
+      additionalProperties: false
+      description: Complete replacement of editable fields. Identity and customer type are immutable.
+      required: [name, profile]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: '^.*\S.*$'
+          description: Full name or registered business name. Surrounding whitespace is removed.
+          example: Ana Perez Gomez
+        profile:
+          $ref: '#/components/schemas/CustomerProfile'
+    CustomerResponse:
+      title: CustomerResponse
+      type: object
+      required: [id, type, profile, documentType, documentNumber, name, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 6bd651ef-1a2c-4e9a-b6cd-17d569fa8f44
+        type:
+          $ref: '#/components/schemas/CustomerType'
+        profile:
+          $ref: '#/components/schemas/CustomerProfile'
+        documentType:
+          type: string
+          minLength: 1
+          maxLength: 24
+          example: DNI
+        documentNumber:
+          type: string
+          minLength: 1
+          maxLength: 32
+          example: '12345678'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          example: Ana Perez
+        status:
+          $ref: '#/components/schemas/CustomerStatus'
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation time in UTC.
+          example: '2026-11-05T15:00:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last modification time in UTC.
+          example: '2026-11-05T15:00:00Z'
+    CustomerPageResponse:
+      title: CustomerPageResponse
+      type: object
+      required: [items, page, size, totalElements, totalPages]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CustomerResponse'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 10000
+          example: 0
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Count matching the filters, possibly observed at a different instant than items.
+          example: 1
+        totalPages:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Ceiling of totalElements divided by size; zero when there are no matches.
+          example: 1
+    ErrorResponse:
+      title: ErrorResponse
+      type: object
+      required: [code, message, timestamp, path]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error identifier.
+          example: CUSTOMER_VERSION_CONFLICT
+        message:
+          type: string
+          description: Human-readable explanation of the error.
+          example: The customer changed. Read it again before retrying.
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-11-05T15:00:00Z'
+        path:
+          type: string
+          example: /customers/6bd651ef-1a2c-4e9a-b6cd-17d569fa8f44
+        traceId:
+          type: string
+          description: Correlation identifier when tracing is enabled.
+    CustomerType:
+      title: CustomerType
+      type: string
+      enum: [PERSONAL, BUSINESS]
+      description: Customer classification, immutable after registration.
+    CustomerProfile:
+      title: CustomerProfile
+      type: string
+      enum: [STANDARD, VIP, SME]
+      description: PERSONAL supports STANDARD or VIP. BUSINESS supports STANDARD or SME. Other combinations are rejected with 422.
+    CustomerStatus:
+      title: CustomerStatus
+      type: string
+      enum: [ACTIVE, INACTIVE]
+      description: New customers are ACTIVE. Logical deletion changes status to INACTIVE.

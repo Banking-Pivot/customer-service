@@ -1,0 +1,235 @@
+{
+  "info": {
+    "name": "customer-service - recorrido CRUD con ETag",
+    "description": "Recorrido reproducible: crear cliente, guardar ID y ETag, consultarlo, actualizarlo, intentar actualizar con el ETag anterior (412) y desactivarlo con el ETag vigente. Cada corrida usa un número de documento nuevo, así que se puede repetir sin 409. Ajusta la variable baseUrl si el servicio no corre en http://localhost:8081 (perfil dev).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8081" },
+    { "key": "documentNumber", "value": "" },
+    { "key": "customerId", "value": "" },
+    { "key": "etag", "value": "" },
+    { "key": "staleEtag", "value": "" },
+    { "key": "updatedName", "value": "Ana Perez Gomez" }
+  ],
+  "item": [
+    {
+      "name": "01 Crear cliente",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Documento nuevo en cada corrida: la identidad es única incluso para clientes inactivos.",
+              "const documentNumber = String(Math.floor(10000000 + Math.random() * 90000000));",
+              "pm.collectionVariables.set('documentNumber', documentNumber);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('Location apunta al cliente creado', () => {",
+              "  pm.expect(pm.response.headers.get('Location')).to.eql('/customers/' + body.id);",
+              "});",
+              "pm.test('ETag de la revisión persistida es \"0\"', () => {",
+              "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"0\"');",
+              "});",
+              "pm.test('Cliente ACTIVE con identidad y nombre normalizados', () => {",
+              "  pm.expect(body.status).to.eql('ACTIVE');",
+              "  pm.expect(body.documentType).to.eql('DNI');",
+              "  pm.expect(body.documentNumber).to.eql(pm.collectionVariables.get('documentNumber'));",
+              "  pm.expect(body.name).to.eql('Ana Perez');",
+              "});",
+              "pm.collectionVariables.set('customerId', body.id);",
+              "pm.collectionVariables.set('etag', pm.response.headers.get('ETag'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \" dni \",\n  \"documentNumber\": \"{{documentNumber}}\",\n  \"name\": \"  Ana Perez  \"\n}"
+        },
+        "url": "{{baseUrl}}/customers"
+      }
+    },
+    {
+      "name": "02 Consultar cliente",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('ETag coincide con el guardado', () => {",
+              "  pm.expect(pm.response.headers.get('ETag')).to.eql(pm.collectionVariables.get('etag'));",
+              "});",
+              "pm.test('Devuelve el cliente creado', () => {",
+              "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('customerId'));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/customers/{{customerId}}"
+      }
+    },
+    {
+      "name": "03 Actualizar cliente (If-Match vigente)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Nuevo ETag \"1\"', () => {",
+              "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"1\"');",
+              "});",
+              "pm.test('Nombre y perfil reemplazados; tipo e identidad intactos', () => {",
+              "  pm.expect(body.name).to.eql(pm.collectionVariables.get('updatedName'));",
+              "  pm.expect(body.profile).to.eql('VIP');",
+              "  pm.expect(body.type).to.eql('PERSONAL');",
+              "  pm.expect(body.documentNumber).to.eql(pm.collectionVariables.get('documentNumber'));",
+              "});",
+              "// El ETag usado pasa a ser el anterior; el devuelto es el vigente.",
+              "pm.collectionVariables.set('staleEtag', pm.collectionVariables.get('etag'));",
+              "pm.collectionVariables.set('etag', pm.response.headers.get('ETag'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "If-Match", "value": "{{etag}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{updatedName}}\",\n  \"profile\": \"VIP\"\n}"
+        },
+        "url": "{{baseUrl}}/customers/{{customerId}}"
+      }
+    },
+    {
+      "name": "04 Actualizar con el ETag anterior (412)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('412 Precondition Failed', () => pm.response.to.have.status(412));",
+              "pm.test('ErrorResponse CUSTOMER_VERSION_CONFLICT', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.code).to.eql('CUSTOMER_VERSION_CONFLICT');",
+              "  pm.expect(body.path).to.eql('/customers/' + pm.collectionVariables.get('customerId'));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "If-Match", "value": "{{staleEtag}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Escritura tardia\",\n  \"profile\": \"STANDARD\"\n}"
+        },
+        "url": "{{baseUrl}}/customers/{{customerId}}"
+      }
+    },
+    {
+      "name": "05 Verificar que no se sobrescribió",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test('200 OK con el ETag vigente', () => {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.headers.get('ETag')).to.eql(pm.collectionVariables.get('etag'));",
+              "});",
+              "pm.test('Se conserva la actualización ganadora', () => {",
+              "  pm.expect(body.name).to.eql(pm.collectionVariables.get('updatedName'));",
+              "  pm.expect(body.profile).to.eql('VIP');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/customers/{{customerId}}"
+      }
+    },
+    {
+      "name": "06 Desactivar cliente (If-Match vigente)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('204 No Content sin cuerpo', () => {",
+              "  pm.response.to.have.status(204);",
+              "  pm.expect(pm.response.text()).to.eql('');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "If-Match", "value": "{{etag}}" }],
+        "url": "{{baseUrl}}/customers/{{customerId}}"
+      }
+    },
+    {
+      "name": "07 Consultar cliente inactivo",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK, el registro se conserva como INACTIVE', () => {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().status).to.eql('INACTIVE');",
+              "});",
+              "pm.test('ETag avanzó a \"2\"', () => {",
+              "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"2\"');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/customers/{{customerId}}"
+      }
+    }
+  ]
+}
