@@ -4,7 +4,8 @@ spring:
 
   # Port and MongoDB location come from the Config Server: banking-config/customer-service.yml
   # and customer-service-<profile>.yml. Secrets (the MongoDB user and password) come from
-  # Vault: secret/customer-service and secret/customer-service/<profile>.
+  # Vault: secret/customer-service and secret/customer-service/<profile>. Where Eureka is comes
+  # from banking-config/application.yml: the service registers there as customer-service.
   config:
     import:
       - "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"

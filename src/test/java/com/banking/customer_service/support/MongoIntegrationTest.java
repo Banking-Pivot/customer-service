@@ -56,7 +56,9 @@ public abstract class MongoIntegrationTest {
                 "spring.mongodb.host", MONGO.getHost(),
                 "spring.mongodb.port", String.valueOf(MONGO.getMappedPort(27017)),
                 "spring.mongodb.database", DATABASE,
-                "spring.mongodb.authentication-database", DATABASE));
+                "spring.mongodb.authentication-database", DATABASE,
+                // No registry in the tests: the service must not register with a real Eureka.
+                "eureka.client.enabled", "false"));
         // Read by application.yaml: configserver:${CONFIG_SERVER_URL:http://localhost:8888}
         System.setProperty("CONFIG_SERVER_URL", CONFIG_SERVER.url());
     }
