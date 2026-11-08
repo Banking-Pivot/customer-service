@@ -1,235 +1,1074 @@
 {
   "info": {
-    "name": "customer-service - recorrido CRUD con ETag",
-    "description": "Recorrido reproducible: crear cliente, guardar ID y ETag, consultarlo, actualizarlo, intentar actualizar con el ETag anterior (412) y desactivarlo con el ETag vigente. Cada corrida usa un número de documento nuevo, así que se puede repetir sin 409. Va por el API Gateway (perfil dev, puerto 8080), que necesita discovery-server y customer-service arriba; ajusta la variable baseUrl si corre en otra dirección.",
+    "name": "customer-service - reglas de negocio de clientes",
+    "description": "Reglas de negocio de customer-service, una carpeta por regla: tipos y perfiles, documento único, validación de la petición, actualización con If-Match y desactivación lógica. Cada corrida crea clientes con documentos nuevos, así que se puede repetir sobre la misma base. Va por el API Gateway (perfil dev, puerto 8080), que necesita discovery-server y customer-service arriba; ajusta baseUrl si corre en otra dirección. Corre la colección completa y en orden: cada carpeta usa el cliente que crea la primera.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "documentNumber", "value": "" },
-    { "key": "customerId", "value": "" },
-    { "key": "etag", "value": "" },
-    { "key": "staleEtag", "value": "" },
-    { "key": "updatedName", "value": "Ana Perez Gomez" }
-  ],
   "item": [
     {
-      "name": "01 Crear cliente",
-      "event": [
+      "name": "1. Tipos de cliente y perfiles",
+      "description": "Un cliente es PERSONAL o BUSINESS. PERSONAL admite los perfiles STANDARD y VIP; BUSINESS admite STANDARD y SME (PYME). Cualquier otra combinación se rechaza con 422 CUSTOMER_RULE_VIOLATION. El tipo de documento, el número y el nombre se guardan sin espacios alrededor y el documento en mayúsculas.",
+      "item": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "// Documento nuevo en cada corrida: la identidad es única incluso para clientes inactivos.",
-              "const documentNumber = String(Math.floor(10000000 + Math.random() * 90000000));",
-              "pm.collectionVariables.set('documentNumber', documentNumber);"
-            ]
+          "name": "01 Crear cliente PERSONAL STANDARD (normaliza documento y nombre)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Documento nuevo en cada corrida: customer-service no admite documentos repetidos.",
+                  "pm.collectionVariables.set('documentNumber', String(Math.floor(10000000 + Math.random() * 90000000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Location y ETag \"0\" del cliente nuevo', () => {",
+                  "  pm.expect(pm.response.headers.get('Location')).to.eql('/customers/' + body.id);",
+                  "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"0\"');",
+                  "});",
+                  "pm.test('ACTIVE, documento en mayúsculas y nombre sin espacios', () => {",
+                  "  pm.expect(body.status).to.eql('ACTIVE');",
+                  "  pm.expect(body.documentType).to.eql('DNI');",
+                  "  pm.expect(body.documentNumber).to.eql(pm.collectionVariables.get('documentNumber'));",
+                  "  pm.expect(body.name).to.eql('Ana Perez');",
+                  "});",
+                  "pm.collectionVariables.set('customerId', body.id);",
+                  "pm.collectionVariables.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \" dni \",\n  \"documentNumber\": \"{{documentNumber}}\",\n  \"name\": \"  Ana Perez  \"\n}"
+            }
           }
         },
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const body = pm.response.json();",
-              "pm.test('201 Created', () => pm.response.to.have.status(201));",
-              "pm.test('Location apunta al cliente creado', () => {",
-              "  pm.expect(pm.response.headers.get('Location')).to.eql('/customers/' + body.id);",
-              "});",
-              "pm.test('ETag de la revisión persistida es \"0\"', () => {",
-              "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"0\"');",
-              "});",
-              "pm.test('Cliente ACTIVE con identidad y nombre normalizados', () => {",
-              "  pm.expect(body.status).to.eql('ACTIVE');",
-              "  pm.expect(body.documentType).to.eql('DNI');",
-              "  pm.expect(body.documentNumber).to.eql(pm.collectionVariables.get('documentNumber'));",
-              "  pm.expect(body.name).to.eql('Ana Perez');",
-              "});",
-              "pm.collectionVariables.set('customerId', body.id);",
-              "pm.collectionVariables.set('etag', pm.response.headers.get('ETag'));"
-            ]
+          "name": "02 Crear cliente PERSONAL VIP",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('vipDocument', 'CE' + String(Math.floor(1000000 + Math.random() * 9000000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('PERSONAL VIP', () => {",
+                  "  pm.expect(body.type).to.eql('PERSONAL');",
+                  "  pm.expect(body.profile).to.eql('VIP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"VIP\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"{{vipDocument}}\",\n  \"name\": \"Carla Rios\"\n}"
+            }
           }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \" dni \",\n  \"documentNumber\": \"{{documentNumber}}\",\n  \"name\": \"  Ana Perez  \"\n}"
         },
-        "url": "{{baseUrl}}/customers"
-      }
-    },
-    {
-      "name": "02 Consultar cliente",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('ETag coincide con el guardado', () => {",
-              "  pm.expect(pm.response.headers.get('ETag')).to.eql(pm.collectionVariables.get('etag'));",
-              "});",
-              "pm.test('Devuelve el cliente creado', () => {",
-              "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('customerId'));",
-              "});"
-            ]
+          "name": "03 Crear cliente BUSINESS SME (PYME)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// RUC nuevo en cada corrida: customer-service no admite documentos repetidos.",
+                  "pm.collectionVariables.set('businessDocument', '20' + String(Math.floor(100000000 + Math.random() * 900000000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('BUSINESS SME', () => {",
+                  "  pm.expect(body.type).to.eql('BUSINESS');",
+                  "  pm.expect(body.profile).to.eql('SME');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"BUSINESS\",\n  \"profile\": \"SME\",\n  \"documentType\": \"RUC\",\n  \"documentNumber\": \"{{businessDocument}}\",\n  \"name\": \"Comercial Andina SAC\"\n}"
+            }
           }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": "{{baseUrl}}/customers/{{customerId}}"
-      }
-    },
-    {
-      "name": "03 Actualizar cliente (If-Match vigente)",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const body = pm.response.json();",
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('Nuevo ETag \"1\"', () => {",
-              "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"1\"');",
-              "});",
-              "pm.test('Nombre y perfil reemplazados; tipo e identidad intactos', () => {",
-              "  pm.expect(body.name).to.eql(pm.collectionVariables.get('updatedName'));",
-              "  pm.expect(body.profile).to.eql('VIP');",
-              "  pm.expect(body.type).to.eql('PERSONAL');",
-              "  pm.expect(body.documentNumber).to.eql(pm.collectionVariables.get('documentNumber'));",
-              "});",
-              "// El ETag usado pasa a ser el anterior; el devuelto es el vigente.",
-              "pm.collectionVariables.set('staleEtag', pm.collectionVariables.get('etag'));",
-              "pm.collectionVariables.set('etag', pm.response.headers.get('ETag'));"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "PUT",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "If-Match", "value": "{{etag}}" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"{{updatedName}}\",\n  \"profile\": \"VIP\"\n}"
         },
-        "url": "{{baseUrl}}/customers/{{customerId}}"
-      }
-    },
-    {
-      "name": "04 Actualizar con el ETag anterior (412)",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('412 Precondition Failed', () => pm.response.to.have.status(412));",
-              "pm.test('ErrorResponse CUSTOMER_VERSION_CONFLICT', () => {",
-              "  const body = pm.response.json();",
-              "  pm.expect(body.code).to.eql('CUSTOMER_VERSION_CONFLICT');",
-              "  pm.expect(body.path).to.eql('/customers/' + pm.collectionVariables.get('customerId'));",
-              "});"
-            ]
+          "name": "04 Crear cliente BUSINESS STANDARD",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// RUC nuevo en cada corrida: customer-service no admite documentos repetidos.",
+                  "pm.collectionVariables.set('businessDocument', '20' + String(Math.floor(100000000 + Math.random() * 900000000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('BUSINESS STANDARD', () => {",
+                  "  pm.expect(body.type).to.eql('BUSINESS');",
+                  "  pm.expect(body.profile).to.eql('STANDARD');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"BUSINESS\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \"RUC\",\n  \"documentNumber\": \"{{businessDocument}}\",\n  \"name\": \"Inversiones del Sur SA\"\n}"
+            }
           }
-        }
-      ],
-      "request": {
-        "method": "PUT",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "If-Match", "value": "{{staleEtag}}" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"Escritura tardia\",\n  \"profile\": \"STANDARD\"\n}"
         },
-        "url": "{{baseUrl}}/customers/{{customerId}}"
-      }
-    },
-    {
-      "name": "05 Verificar que no se sobrescribió",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const body = pm.response.json();",
-              "pm.test('200 OK con el ETag vigente', () => {",
-              "  pm.response.to.have.status(200);",
-              "  pm.expect(pm.response.headers.get('ETag')).to.eql(pm.collectionVariables.get('etag'));",
-              "});",
-              "pm.test('Se conserva la actualización ganadora', () => {",
-              "  pm.expect(body.name).to.eql(pm.collectionVariables.get('updatedName'));",
-              "  pm.expect(body.profile).to.eql('VIP');",
-              "});"
-            ]
+          "name": "05 PERSONAL con perfil SME (422)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Documento nuevo en cada corrida: customer-service no admite documentos repetidos.",
+                  "pm.collectionVariables.set('rejectedDocument', String(Math.floor(10000000 + Math.random() * 90000000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 CUSTOMER_RULE_VIOLATION', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_RULE_VIOLATION');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"SME\",\n  \"documentType\": \"DNI\",\n  \"documentNumber\": \"{{rejectedDocument}}\",\n  \"name\": \"Luis Soto\"\n}"
+            }
+          }
+        },
+        {
+          "name": "06 BUSINESS con perfil VIP (422)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// RUC nuevo en cada corrida: customer-service no admite documentos repetidos.",
+                  "pm.collectionVariables.set('rejectedDocument', '20' + String(Math.floor(100000000 + Math.random() * 900000000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 CUSTOMER_RULE_VIOLATION', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_RULE_VIOLATION');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"BUSINESS\",\n  \"profile\": \"VIP\",\n  \"documentType\": \"RUC\",\n  \"documentNumber\": \"{{rejectedDocument}}\",\n  \"name\": \"Servicios Lima SRL\"\n}"
+            }
+          }
+        },
+        {
+          "name": "07 Listar solo clientes BUSINESS activos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Todos BUSINESS ACTIVE y al menos los dos de esta corrida', () => {",
+                  "  body.items.forEach(c => { pm.expect(c.type).to.eql('BUSINESS'); pm.expect(c.status).to.eql('ACTIVE'); });",
+                  "  pm.expect(body.totalElements).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/customers?type=BUSINESS&status=ACTIVE&size=100"
           }
         }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": "{{baseUrl}}/customers/{{customerId}}"
-      }
+      ]
     },
     {
-      "name": "06 Desactivar cliente (If-Match vigente)",
-      "event": [
+      "name": "2. Documento de identidad único",
+      "description": "Un documento solo puede pertenecer a un cliente. La comparación se hace después de normalizar, así que el mismo número con espacios o el tipo en minúsculas también choca (409). Un rechazo no crea nada.",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('204 No Content sin cuerpo', () => {",
-              "  pm.response.to.have.status(204);",
-              "  pm.expect(pm.response.text()).to.eql('');",
-              "});"
-            ]
+          "name": "08 Mismo documento con espacios y tipo en minúsculas (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CUSTOMER_DOCUMENT_ALREADY_EXISTS', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_DOCUMENT_ALREADY_EXISTS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \"dni\",\n  \"documentNumber\": \"  {{documentNumber}}  \",\n  \"name\": \"Otra Persona\"\n}"
+            }
           }
         }
-      ],
-      "request": {
-        "method": "DELETE",
-        "header": [{ "key": "If-Match", "value": "{{etag}}" }],
-        "url": "{{baseUrl}}/customers/{{customerId}}"
-      }
+      ]
     },
     {
-      "name": "07 Consultar cliente inactivo",
-      "event": [
+      "name": "3. Validación de la petición",
+      "description": "Errores del contrato: campos desconocidos, obligatorios o con valores fuera del enum dan 400 INVALID_REQUEST; un cuerpo que no es JSON da 415; un ID que no existe da 404 y uno mal formado, 400.",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('200 OK, el registro se conserva como INACTIVE', () => {",
-              "  pm.response.to.have.status(200);",
-              "  pm.expect(pm.response.json().status).to.eql('INACTIVE');",
-              "});",
-              "pm.test('ETag avanzó a \"2\"', () => {",
-              "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"2\"');",
-              "});"
-            ]
+          "name": "09 Campo desconocido (400)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Documento nuevo en cada corrida: customer-service no admite documentos repetidos.",
+                  "pm.collectionVariables.set('rejectedDocument', String(Math.floor(10000000 + Math.random() * 90000000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_REQUEST', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('INVALID_REQUEST');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \"DNI\",\n  \"documentNumber\": \"{{rejectedDocument}}\",\n  \"name\": \"Ana Perez\",\n  \"email\": \"ana@example.com\"\n}"
+            }
+          }
+        },
+        {
+          "name": "10 Falta el nombre (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_REQUEST', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('INVALID_REQUEST');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \"DNI\",\n  \"documentNumber\": \"{{rejectedDocument}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "11 Tipo de cliente inexistente (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_REQUEST', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('INVALID_REQUEST');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"GOVERNMENT\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \"DNI\",\n  \"documentNumber\": \"{{rejectedDocument}}\",\n  \"name\": \"Ana Perez\"\n}"
+            }
+          }
+        },
+        {
+          "name": "12 Cuerpo que no es JSON (415)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('415 UNSUPPORTED_MEDIA_TYPE', () => {",
+                  "  pm.response.to.have.status(415);",
+                  "  pm.expect(pm.response.json().code).to.eql('UNSUPPORTED_MEDIA_TYPE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "type=PERSONAL"
+            }
+          }
+        },
+        {
+          "name": "13 Cliente que no existe (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 CUSTOMER_NOT_FOUND', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/customers/{{$guid}}"
+          }
+        },
+        {
+          "name": "14 ID mal formado (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_REQUEST', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('INVALID_REQUEST');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/customers/no-es-un-uuid"
           }
         }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": "{{baseUrl}}/customers/{{customerId}}"
-      }
+      ]
+    },
+    {
+      "name": "4. Actualización con If-Match",
+      "description": "PUT reemplaza nombre y perfil y exige el ETag vigente en If-Match: sin cabecera 428, con un formato distinto de \"n\" 400, con una versión vieja 412. El tipo y el documento no se pueden cambiar, y el perfil nuevo tiene que ser válido para el tipo.",
+      "item": [
+        {
+          "name": "15 Consultar el cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('ETag \"0\" y datos de la creación', () => {",
+                  "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"0\"');",
+                  "  pm.expect(body.profile).to.eql('STANDARD');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/customers/{{customerId}}"
+          }
+        },
+        {
+          "name": "16 Sin If-Match (428)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('428 IF_MATCH_REQUIRED', () => {",
+                  "  pm.response.to.have.status(428);",
+                  "  pm.expect(pm.response.json().code).to.eql('IF_MATCH_REQUIRED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Perez Gomez\",\n  \"profile\": \"VIP\"\n}"
+            }
+          }
+        },
+        {
+          "name": "17 If-Match débil W/\"0\" (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_IF_MATCH', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('INVALID_IF_MATCH');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "W/\"0\""
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Perez Gomez\",\n  \"profile\": \"VIP\"\n}"
+            }
+          }
+        },
+        {
+          "name": "18 Perfil SME para un PERSONAL (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 CUSTOMER_RULE_VIOLATION', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_RULE_VIOLATION');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Perez Gomez\",\n  \"profile\": \"SME\"\n}"
+            }
+          }
+        },
+        {
+          "name": "19 Intentar cambiar el tipo (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_REQUEST', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('INVALID_REQUEST');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Perez Gomez\",\n  \"profile\": \"VIP\",\n  \"type\": \"BUSINESS\"\n}"
+            }
+          }
+        },
+        {
+          "name": "20 Pasar a VIP con el ETag vigente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Perfil VIP, nombre nuevo y ETag \"1\"', () => {",
+                  "  pm.expect(body.profile).to.eql('VIP');",
+                  "  pm.expect(body.name).to.eql('Ana Perez Gomez');",
+                  "  pm.expect(pm.response.headers.get('ETag')).to.eql('\"1\"');",
+                  "});",
+                  "pm.collectionVariables.set('staleEtag', pm.collectionVariables.get('etag'));",
+                  "pm.collectionVariables.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Perez Gomez\",\n  \"profile\": \"VIP\"\n}"
+            }
+          }
+        },
+        {
+          "name": "21 Repetir los mismos valores (200, mismo ETag)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Sin cambios no sube la versión', () => {",
+                  "  pm.expect(pm.response.headers.get('ETag')).to.eql(pm.collectionVariables.get('etag'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Perez Gomez\",\n  \"profile\": \"VIP\"\n}"
+            }
+          }
+        },
+        {
+          "name": "22 Actualizar con el ETag anterior (412)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('412 CUSTOMER_VERSION_CONFLICT', () => {",
+                  "  pm.response.to.have.status(412);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_VERSION_CONFLICT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{staleEtag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nombre Pisado\",\n  \"profile\": \"STANDARD\"\n}"
+            }
+          }
+        },
+        {
+          "name": "23 El 412 no sobrescribió nada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Sigue VIP con el nombre del PUT válido', () => {",
+                  "  pm.expect(body.profile).to.eql('VIP');",
+                  "  pm.expect(body.name).to.eql('Ana Perez Gomez');",
+                  "  pm.expect(pm.response.headers.get('ETag')).to.eql(pm.collectionVariables.get('etag'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/customers/{{customerId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Desactivación lógica",
+      "description": "DELETE no borra: pasa el cliente a INACTIVE y conserva el registro. Exige If-Match; repetirlo con el ETag vigente devuelve 204 sin cambios y con el ETag anterior, 412. Un cliente inactivo no se puede editar (409) y su documento sigue ocupado.",
+      "item": [
+        {
+          "name": "24 Desactivar sin If-Match (428)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('428 IF_MATCH_REQUIRED', () => {",
+                  "  pm.response.to.have.status(428);",
+                  "  pm.expect(pm.response.json().code).to.eql('IF_MATCH_REQUIRED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/customers/{{customerId}}"
+          }
+        },
+        {
+          "name": "25 Desactivar con el ETag vigente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));",
+                  "pm.collectionVariables.set('staleEtag', pm.collectionVariables.get('etag'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}"
+          }
+        },
+        {
+          "name": "26 Consultar el cliente inactivo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('INACTIVE y con versión nueva', () => {",
+                  "  pm.expect(body.status).to.eql('INACTIVE');",
+                  "  pm.expect(pm.response.headers.get('ETag')).to.not.eql(pm.collectionVariables.get('staleEtag'));",
+                  "});",
+                  "pm.collectionVariables.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/customers/{{customerId}}"
+          }
+        },
+        {
+          "name": "27 Repetir con el ETag vigente (204 sin cambios)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}"
+          }
+        },
+        {
+          "name": "28 Repetir con el ETag anterior (412)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('412 CUSTOMER_VERSION_CONFLICT', () => {",
+                  "  pm.response.to.have.status(412);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_VERSION_CONFLICT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "If-Match",
+                "value": "{{staleEtag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}"
+          }
+        },
+        {
+          "name": "29 Editar un cliente inactivo (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CUSTOMER_INACTIVE', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_INACTIVE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": "{{baseUrl}}/customers/{{customerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Perez\",\n  \"profile\": \"STANDARD\"\n}"
+            }
+          }
+        },
+        {
+          "name": "30 Registrar el documento de un cliente inactivo (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CUSTOMER_DOCUMENT_ALREADY_EXISTS', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('CUSTOMER_DOCUMENT_ALREADY_EXISTS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PERSONAL\",\n  \"profile\": \"STANDARD\",\n  \"documentType\": \"DNI\",\n  \"documentNumber\": \"{{documentNumber}}\",\n  \"name\": \"Ana Perez\"\n}"
+            }
+          }
+        },
+        {
+          "name": "31 Listar inactivos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Solo INACTIVE', () => {",
+                  "  body.items.forEach(c => pm.expect(c.status).to.eql('INACTIVE'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/customers?status=INACTIVE&size=100"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "documentNumber",
+      "value": ""
+    },
+    {
+      "key": "vipDocument",
+      "value": ""
+    },
+    {
+      "key": "businessDocument",
+      "value": ""
+    },
+    {
+      "key": "rejectedDocument",
+      "value": ""
+    },
+    {
+      "key": "customerId",
+      "value": ""
+    },
+    {
+      "key": "etag",
+      "value": ""
+    },
+    {
+      "key": "staleEtag",
+      "value": ""
     }
   ]
 }
