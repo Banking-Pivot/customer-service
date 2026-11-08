@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "customer-service - recorrido CRUD con ETag",
-    "description": "Recorrido reproducible: crear cliente, guardar ID y ETag, consultarlo, actualizarlo, intentar actualizar con el ETag anterior (412) y desactivarlo con el ETag vigente. Cada corrida usa un número de documento nuevo, así que se puede repetir sin 409. Ajusta la variable baseUrl si el servicio no corre en http://localhost:8081 (perfil dev).",
+    "description": "Recorrido reproducible: crear cliente, guardar ID y ETag, consultarlo, actualizarlo, intentar actualizar con el ETag anterior (412) y desactivarlo con el ETag vigente. Cada corrida usa un número de documento nuevo, así que se puede repetir sin 409. Va por el API Gateway (perfil dev, puerto 8080), que necesita discovery-server y customer-service arriba; ajusta la variable baseUrl si corre en otra dirección.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8081" },
+    { "key": "baseUrl", "value": "http://localhost:8080" },
     { "key": "documentNumber", "value": "" },
     { "key": "customerId", "value": "" },
     { "key": "etag", "value": "" },
