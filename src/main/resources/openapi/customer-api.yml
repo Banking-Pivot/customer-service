@@ -14,7 +14,7 @@ tags:
   - name: Customers
     description: Customer records and profiles.
 paths:
-  /customers:
+  /api/v1/customers:
     post:
       tags: [Customers]
       operationId: createCustomer
@@ -48,7 +48,7 @@ paths:
               description: URI of the created customer.
               schema:
                 type: string
-              example: /customers/6bd651ef-1a2c-4e9a-b6cd-17d569fa8f44
+              example: /api/v1/customers/6bd651ef-1a2c-4e9a-b6cd-17d569fa8f44
             ETag:
               $ref: '#/components/headers/CustomerETag'
           content:
@@ -112,7 +112,7 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalError'
-  /customers/{customerId}:
+  /api/v1/customers/{customerId}:
     parameters:
       - $ref: '#/components/parameters/CustomerId'
     get:
@@ -437,10 +437,13 @@ components:
           example: '2026-11-05T15:00:00Z'
         path:
           type: string
-          example: /customers/6bd651ef-1a2c-4e9a-b6cd-17d569fa8f44
+          example: /api/v1/customers/6bd651ef-1a2c-4e9a-b6cd-17d569fa8f44
         traceId:
           type: string
-          description: Correlation identifier when tracing is enabled.
+          description: >-
+            Correlation identifier of the request: the X-Correlation-ID header received, or
+            the one generated when it was absent. It is also returned in that header and
+            written in the logs of every service the request reached.
     CustomerType:
       title: CustomerType
       type: string

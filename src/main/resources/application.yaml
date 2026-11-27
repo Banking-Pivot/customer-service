@@ -26,6 +26,10 @@ spring:
         # Read only this service's paths, not the shared secret/application.
         default-context: ""
 
+  reactor:
+    # The correlation id of a request reaches the logs of every thread that serves it.
+    context-propagation: auto
+
   jackson:
     deserialization:
       fail-on-unknown-properties: true
