@@ -1,6 +1,10 @@
 package com.banking.customerservice.domain.model;
 
 import com.banking.customerservice.domain.exception.InvalidCustomerException;
+import com.banking.customerservice.domain.model.enums.CustomerProfile;
+import com.banking.customerservice.domain.model.enums.CustomerStatus;
+import com.banking.customerservice.domain.model.enums.CustomerType;
+import com.banking.customerservice.domain.model.vo.IdentityDocument;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;

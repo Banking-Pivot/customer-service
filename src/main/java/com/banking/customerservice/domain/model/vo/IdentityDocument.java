@@ -1,4 +1,4 @@
-package com.banking.customerservice.domain.model;
+package com.banking.customerservice.domain.model.vo;
 
 import com.banking.customerservice.domain.exception.InvalidCustomerException;
 import java.util.Locale;

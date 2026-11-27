@@ -1,7 +1,7 @@
 package com.banking.customerservice.application.query;
 
-import com.banking.customerservice.domain.model.CustomerStatus;
-import com.banking.customerservice.domain.model.CustomerType;
+import com.banking.customerservice.domain.model.enums.CustomerStatus;
+import com.banking.customerservice.domain.model.enums.CustomerType;
 
 /**
  * Zero-based page request with optional filters; {@code null} means "any". Bounds mirror the

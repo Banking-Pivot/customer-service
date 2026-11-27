@@ -1,9 +1,9 @@
 package com.banking.customerservice.application.model;
 
 import com.banking.customerservice.domain.model.Customer;
-import com.banking.customerservice.domain.model.CustomerProfile;
-import com.banking.customerservice.domain.model.CustomerStatus;
-import com.banking.customerservice.domain.model.CustomerType;
+import com.banking.customerservice.domain.model.enums.CustomerProfile;
+import com.banking.customerservice.domain.model.enums.CustomerStatus;
+import com.banking.customerservice.domain.model.enums.CustomerType;
 import java.time.Instant;
 import java.util.UUID;
 

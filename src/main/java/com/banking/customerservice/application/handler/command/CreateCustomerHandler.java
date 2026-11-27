@@ -5,7 +5,7 @@ import com.banking.customerservice.application.model.CustomerView;
 import com.banking.customerservice.application.port.in.CreateCustomerUseCase;
 import com.banking.customerservice.application.port.out.CustomerWritePort;
 import com.banking.customerservice.domain.model.Customer;
-import com.banking.customerservice.domain.model.IdentityDocument;
+import com.banking.customerservice.domain.model.vo.IdentityDocument;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;

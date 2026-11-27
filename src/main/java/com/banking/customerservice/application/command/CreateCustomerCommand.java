@@ -1,7 +1,7 @@
 package com.banking.customerservice.application.command;
 
-import com.banking.customerservice.domain.model.CustomerProfile;
-import com.banking.customerservice.domain.model.CustomerType;
+import com.banking.customerservice.domain.model.enums.CustomerProfile;
+import com.banking.customerservice.domain.model.enums.CustomerType;
 
 /**
  * Data to register a new customer. The identity document arrives as the client typed it; the domain

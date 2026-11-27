@@ -2,7 +2,7 @@ package com.banking.customerservice.infrastructure.adapter.out.mongodb;
 
 import com.banking.customerservice.application.model.CustomerView;
 import com.banking.customerservice.domain.model.Customer;
-import com.banking.customerservice.domain.model.IdentityDocument;
+import com.banking.customerservice.domain.model.vo.IdentityDocument;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 

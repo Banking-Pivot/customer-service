@@ -1,4 +1,4 @@
-package com.banking.customerservice.domain.model;
+package com.banking.customerservice.domain.model.enums;
 
 /**
  * Commercial segment of a customer. VIP applies only to personal customers and SME only to business

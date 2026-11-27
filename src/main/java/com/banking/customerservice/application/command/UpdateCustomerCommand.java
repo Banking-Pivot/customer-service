@@ -1,6 +1,6 @@
 package com.banking.customerservice.application.command;
 
-import com.banking.customerservice.domain.model.CustomerProfile;
+import com.banking.customerservice.domain.model.enums.CustomerProfile;
 import java.util.Objects;
 import java.util.UUID;
 

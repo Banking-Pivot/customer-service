@@ -1,4 +1,4 @@
-package com.banking.customerservice.domain.model;
+package com.banking.customerservice.domain.model.enums;
 
 /**
  * Lifecycle state of a customer. INACTIVE marks a logical deletion: the record stays but can no

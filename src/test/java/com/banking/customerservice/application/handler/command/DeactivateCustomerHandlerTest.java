@@ -6,10 +6,10 @@ import com.banking.customerservice.application.command.DeactivateCustomerCommand
 import com.banking.customerservice.application.exception.CustomerConcurrentModificationException;
 import com.banking.customerservice.application.exception.CustomerNotFoundException;
 import com.banking.customerservice.domain.model.Customer;
-import com.banking.customerservice.domain.model.CustomerProfile;
-import com.banking.customerservice.domain.model.CustomerStatus;
-import com.banking.customerservice.domain.model.CustomerType;
-import com.banking.customerservice.domain.model.IdentityDocument;
+import com.banking.customerservice.domain.model.enums.CustomerProfile;
+import com.banking.customerservice.domain.model.enums.CustomerStatus;
+import com.banking.customerservice.domain.model.enums.CustomerType;
+import com.banking.customerservice.domain.model.vo.IdentityDocument;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;

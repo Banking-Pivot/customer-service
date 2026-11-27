@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.banking.customerservice.domain.exception.InvalidCustomerException;
+import com.banking.customerservice.domain.model.enums.CustomerProfile;
+import com.banking.customerservice.domain.model.enums.CustomerStatus;
+import com.banking.customerservice.domain.model.enums.CustomerType;
+import com.banking.customerservice.domain.model.vo.IdentityDocument;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
